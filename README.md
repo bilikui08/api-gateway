@@ -13,10 +13,10 @@ Cliente ──► API Gateway :3000 ──► auth-api (Laravel, :8083)
 ## Qué hace
 
 - **Proxy por servicio**: `/<prefijo>/...` → `<servicio>/<prefijo interno>/...` (p. ej. `/auth/login` → `/api/auth/login`).
-- **Autenticación**: valida el token Bearer (Passport, token opaco) llamando a `GET /api/auth/me` del servicio de auth, con caché en memoria (30 s). Un `logout` invalida la caché.
-- **Autorización por rol**: reglas por ruta (403 si el rol no coincide).
-- **Identidad hacia los servicios**: añade `X-User-Id`, `X-User-Email` y `X-User-Roles`. Descarta los que envíe el cliente.
-- **Clave compartida**: añade `X-Gateway-Secret` (`GATEWAY_SHARED_SECRET`) a todo lo que reenvía; los servicios (facturación) rechazan lo que no la traiga, para que nadie pueda saltarse el gateway y falsificar la identidad.
+- **Autenticación**: valida el JWT (RS256) que emite auth (Passport) **localmente con su clave pública**: firma, expiración y `aud` opcional. No llama a auth en cada petición. El `sub` del token es el id de usuario.
+- **Los servicios validan el mismo JWT por su cuenta** con la misma clave pública: el gateway reenvía el `Authorization` intacto y no hay secreto compartido. Un cliente que llegue directo a un servicio sin un token válido no consigue nada.
+- **Autorización por rol**: reglas por ruta (403 si el rol no coincide). El token no lleva el rol, así que solo en las rutas con `roleRules` se consulta `GET /api/auth/me` (con caché).
+- **`X-User-Id`**: el gateway lo añade solo como dato informativo (logs). Descarta el que envíe el cliente; los servicios no deben fiarse de él.
 - **Seguridad**: helmet, CORS cerrado por defecto, rate limiting (más estricto en login/register/forgot-password), límite de body.
 - **Observabilidad**: `X-Request-Id` en cada petición y un log JSON por petición.
 - **Resiliencia básica**: errores JSON uniformes (502 servicio caído, 504 timeout, 503 auth no disponible), shutdown ordenado.
@@ -48,10 +48,11 @@ npm run start:dev           # usa AUTH_SERVICE_URL de .env
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `AUTH_SERVICE_URL` | — (obligatoria) | URL base del servicio de auth |
-| `AUTH_VALIDATE_PATH` | `/api/auth/me` | Endpoint que valida el Bearer (GET, 200 = válido) |
-| `TOKEN_CACHE_TTL_MS` | `30000` | Caché de validaciones exitosas |
+| `AUTH_JWT_PUBLIC_KEY` | — (obligatoria, o `AUTH_JWT_PUBLIC_KEY_PATH`) | Clave **pública** de auth (`storage/oauth-public.key`), PEM en una línea con `\n` |
+| `AUTH_JWT_AUDIENCE` | vacío | Si se define, el claim `aud` (id del cliente OAuth) debe coincidir |
+| `AUTH_VALIDATE_PATH` | `/api/auth/me` | Endpoint con el usuario y su rol (solo en rutas con `roleRules`) |
+| `TOKEN_CACHE_TTL_MS` | `30000` | Caché de esa consulta de usuario/rol |
 | `BILLING_SERVICE_URL` | vacío | Si se define, se registra `/billing/*` |
-| `GATEWAY_SHARED_SECRET` | vacío | Clave compartida con los servicios (obligatoria si hay facturación). Igual a `GATEWAY_SECRET` de facturin |
 | `PORT` | `3000` | Puerto del gateway |
 | `CORS_ORIGINS` | vacío (CORS cerrado) | Orígenes permitidos, separados por coma |
 | `TRUST_PROXY` | vacío | Nº de proxies delante (nginx, balanceador) para ver la IP real |
@@ -105,10 +106,10 @@ El rol sale de `data.role` (texto) o `data.roles` (lista) de la respuesta de `/m
 Se despliega como **Node.js Web App** desde el repositorio de GitHub (hPanel → Websites → Add Website → Node.js web app):
 
 - Node.js 24 (o 22), build command `npm run build`, entry file `dist/main.js`.
-- Variables de entorno en el panel: `AUTH_SERVICE_URL`, `BILLING_SERVICE_URL`, `GATEWAY_SHARED_SECRET`, `CORS_ORIGINS`, `TRUST_PROXY`.
+- Variables de entorno en el panel: `AUTH_SERVICE_URL`, `AUTH_JWT_PUBLIC_KEY`, `BILLING_SERVICE_URL`, `CORS_ORIGINS`, `TRUST_PROXY`.
 - Hostinger detiene la app tras un tiempo sin tráfico y la reinicia en la siguiente petición: la caché de tokens y el rate limit (en memoria) se pierden entonces.
 - Verifica en el primer despliegue que la app escucha en el puerto que asigna la plataforma (`PORT`).
-- En hosting compartido no hay red interna: los servicios deben exigir `X-Gateway-Secret` para que solo el gateway pueda llamarlos.
+- En hosting compartido no hay red interna: no importa, porque cada servicio valida el JWT con la clave pública y no confía en quién le llama.
 
 ## Tests y calidad
 
@@ -122,6 +123,7 @@ npx tsc --noEmit
 ## Limitaciones conocidas
 
 - La caché de tokens y el rate limit viven en memoria: con **varias instancias** del gateway cada una tiene los suyos. Para escalar horizontalmente, muévelos a Redis.
-- Un token revocado puede seguir aceptándose hasta `TOKEN_CACHE_TTL_MS` (salvo con `logout` a través del gateway, que invalida la caché).
+- **Revocación**: validar la firma no consulta la BD de auth, así que un token revocado (logout) sigue valiendo hasta que caduque. Por eso los access tokens de auth son cortos (15 min, `PASSPORT_ACCESS_TOKEN_TTL_MINUTES`) y se renuevan con el refresh token.
+- **Rotación de claves**: si cambias el par de claves de auth, hay que actualizar `AUTH_JWT_PUBLIC_KEY` en el gateway y en cada servicio (todos los tokens vigentes dejan de valer). Un JWKS lo automatizaría.
 - El límite de body se basa en `Content-Length`; una petición `chunked` sin esa cabecera lo esquiva.
 - Sin circuit breaker ni reintentos: un servicio lento ocupa conexiones hasta el timeout (15 s).

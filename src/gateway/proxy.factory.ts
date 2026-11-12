@@ -14,11 +14,6 @@ export function createServiceProxy(service: ServiceConfig) {
     proxyTimeout: 15000,
     timeout: 15000,
     on: {
-      // Clave compartida: los servicios solo aceptan trafico que venga del gateway.
-      proxyReq: (proxyReq) => {
-        const secret = process.env.GATEWAY_SHARED_SECRET;
-        if (secret) proxyReq.setHeader('x-gateway-secret', secret);
-      },
       error: (err, _req, res) => {
         const code = (err as NodeJS.ErrnoException).code;
         const timeout = code === 'ECONNRESET' || code === 'ETIMEDOUT';

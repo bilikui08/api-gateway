@@ -1,18 +1,23 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createApp, startFakeAuth } from './helpers.js';
+import { createApp, makeKeys, signToken, startFakeAuth } from './helpers.js';
+
+const keys = makeKeys();
+const otherKeys = makeKeys();
 
 describe('Gateway (e2e)', () => {
   let app: INestApplication;
   let auth: Awaited<ReturnType<typeof startFakeAuth>>;
+  let valid: string;
 
   beforeAll(async () => {
     auth = await startFakeAuth();
+    valid = await signToken(keys.privateKey, { sub: '42' });
     // Un mismo servidor falso hace de auth y de billing.
     app = await createApp({
       AUTH_SERVICE_URL: auth.url,
       BILLING_SERVICE_URL: auth.url,
-      GATEWAY_SHARED_SECRET: 'secreto-de-prueba',
+      AUTH_JWT_PUBLIC_KEY: keys.publicPem,
       RATE_LIMIT_MAX: '1000',
       RATE_LIMIT_AUTH_MAX: '1000',
       MAX_BODY_BYTES: '1000',
@@ -47,35 +52,22 @@ describe('Gateway (e2e)', () => {
     });
   });
 
-  describe('billing y clave compartida', () => {
-    it('reenvia /billing/customers a /api/customers con identidad y clave', async () => {
-      await http().get('/billing/customers').set('Authorization', 'Bearer valid').expect(200);
+  describe('billing', () => {
+    it('reenvia /billing/customers a /api/customers con el Bearer intacto', async () => {
+      await http().get('/billing/customers').set('Authorization', `Bearer ${valid}`).expect(200);
       const upstream = auth.requests.at(-1)!;
       expect(upstream.url).toBe('/api/customers');
-      expect(upstream.headers['x-user-id']).toBe('42');
-      expect(upstream.headers['x-gateway-secret']).toBe('secreto-de-prueba');
+      expect(upstream.headers.authorization).toBe(`Bearer ${valid}`);
     });
 
     it('billing exige Bearer', async () => {
       await http().get('/billing/customers').expect(401);
     });
-
-    it('el cliente no puede fijar X-Gateway-Secret propio hacia el servicio', async () => {
-      await http()
-        .get('/billing/customers')
-        .set('Authorization', 'Bearer valid')
-        .set('X-Gateway-Secret', 'falsa')
-        .expect(200);
-      expect(auth.requests.at(-1)!.headers['x-gateway-secret']).toBe('secreto-de-prueba');
-    });
-
-    it('el guard envia la clave al validar el token', async () => {
-      await http().post('/auth/login').send({}).expect(200);
-      expect(auth.requests.at(-1)!.headers['x-gateway-secret']).toBe('secreto-de-prueba');
-    });
   });
 
-  describe('guard de Bearer', () => {
+  describe('validacion del JWT (clave publica)', () => {
+    const me = (token: string) => http().get('/auth/me').set('Authorization', `Bearer ${token}`);
+
     it('deja pasar las rutas publicas sin token', async () => {
       await http().post('/auth/login').send({}).expect(200);
     });
@@ -87,33 +79,54 @@ describe('Gateway (e2e)', () => {
       expect(auth.requests.length).toBe(before);
     });
 
-    it('rechaza un token invalido (401)', async () => {
-      await http().get('/auth/me').set('Authorization', 'Bearer nope').expect(401);
+    it('acepta un JWT valido y propaga el id de usuario (sub)', async () => {
+      await me(valid).expect(200);
+      expect(auth.requests.at(-1)!.headers['x-user-id']).toBe('42');
     });
 
-    it('acepta un token valido y propaga la identidad', async () => {
-      await http().get('/auth/me').set('Authorization', 'Bearer valid').expect(200);
-      const upstream = auth.requests.at(-1)!;
-      expect(upstream.headers['x-user-id']).toBe('42');
-      expect(upstream.headers['x-user-email']).toBe('a@b.com');
-      expect(upstream.headers['x-user-roles']).toBe('user');
-      expect(upstream.headers.authorization).toBe('Bearer valid');
+    it('valida localmente: no llama a auth para validar el token', async () => {
+      const calls = auth.meCalls();
+      await http().get('/billing/customers').set('Authorization', `Bearer ${valid}`).expect(200);
+      await http().get('/billing/customers').set('Authorization', `Bearer ${valid}`).expect(200);
+      expect(auth.meCalls()).toBe(calls);
+    });
+
+    it('acepta un token recien emitido aunque su nbf tenga decimales (Passport)', async () => {
+      // Passport emite iat/nbf con microsegundos; el token se usa en el mismo segundo.
+      const fresh = await signToken(keys.privateKey, { notBefore: Date.now() / 1000 + 0.5 });
+      await me(fresh).expect(200);
+    });
+
+    it('rechaza un token cuyo nbf esta lejos en el futuro', async () => {
+      await me(await signToken(keys.privateKey, { notBefore: Date.now() / 1000 + 3600 })).expect(401);
+    });
+
+    it('rechaza un token expirado', async () => {
+      const expired = await signToken(keys.privateKey, { expiresIn: '-1m' });
+      await me(expired).expect(401);
+    });
+
+    it('rechaza un token firmado con otra clave', async () => {
+      await me(await signToken(otherKeys.privateKey)).expect(401);
+    });
+
+    it('rechaza un token manipulado (payload cambiado)', async () => {
+      const [h, , sig] = valid.split('.');
+      const forged = Buffer.from(JSON.stringify({ sub: '1', exp: 9999999999 })).toString('base64url');
+      await me(`${h}.${forged}.${sig}`).expect(401);
+    });
+
+    it('rechaza alg "none" y tokens basura', async () => {
+      const none = `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from('{"sub":"1"}').toString('base64url')}.`;
+      await me(none).expect(401);
+      await me('abc').expect(401);
     });
 
     it('ignora X-User-Id enviado por el cliente (anti-suplantacion)', async () => {
       await http().post('/auth/login').set('X-User-Id', '999').send({}).expect(200);
       expect(auth.requests.at(-1)!.headers['x-user-id']).toBeUndefined();
-    });
-
-    it('cachea las validaciones y un logout invalida la cache', async () => {
-      await http().get('/auth/me').set('Authorization', 'Bearer valid').expect(200);
-      const calls = auth.meCalls();
-      await http().get('/auth/me').set('Authorization', 'Bearer valid').expect(200);
-      expect(auth.meCalls()).toBe(calls); // segunda vez: desde cache
-
-      await http().post('/auth/logout').set('Authorization', 'Bearer valid').expect(200);
-      await http().get('/auth/me').set('Authorization', 'Bearer valid').expect(200);
-      expect(auth.meCalls()).toBeGreaterThan(calls); // revalidado tras logout
+      await me(valid).set('X-User-Id', '999').expect(200);
+      expect(auth.requests.at(-1)!.headers['x-user-id']).toBe('42');
     });
   });
 
@@ -161,6 +174,7 @@ describe('Gateway con servicio caido (e2e)', () => {
   beforeAll(async () => {
     // Puerto sin nadie escuchando.
     app = await createApp({
+      AUTH_JWT_PUBLIC_KEY: keys.publicPem,
       AUTH_SERVICE_URL: 'http://127.0.0.1:9',
       RATE_LIMIT_MAX: '1000',
       RATE_LIMIT_AUTH_MAX: '1000',
@@ -173,8 +187,9 @@ describe('Gateway con servicio caido (e2e)', () => {
     expect(res.body).toMatchObject({ success: false });
   });
 
-  it('una ruta protegida responde 503 si no se puede validar el token', async () => {
-    await request(app.getHttpServer()).get('/auth/me').set('Authorization', 'Bearer x').expect(503);
+  it('una ruta protegida con JWT valido responde 502 (la validacion no depende de auth)', async () => {
+    const token = await signToken(keys.privateKey);
+    await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${token}`).expect(502);
   });
 
   it('/health responde 503 degraded', async () => {
@@ -190,6 +205,7 @@ describe('Rate limiting (e2e)', () => {
   beforeAll(async () => {
     auth = await startFakeAuth();
     app = await createApp({
+      AUTH_JWT_PUBLIC_KEY: keys.publicPem,
       AUTH_SERVICE_URL: auth.url,
       RATE_LIMIT_MAX: '1000',
       RATE_LIMIT_AUTH_MAX: '3',

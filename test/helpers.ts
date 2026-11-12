@@ -1,9 +1,35 @@
+import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { SignJWT } from 'jose';
 import { AppModule } from '../src/app.module.js';
 import { setupApp } from '../src/setup-app.js';
+
+/** Par de claves RSA de prueba: hace de "auth" firmando JWT que el gateway verifica. */
+export function makeKeys() {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  return {
+    publicKey,
+    privateKey,
+    publicPem: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+  };
+}
+
+export async function signToken(
+  privateKey: KeyObject,
+  opts: { sub?: string; expiresIn?: string; aud?: string; alg?: string; notBefore?: number } = {},
+) {
+  const jwt = new SignJWT({ scopes: [] })
+    .setProtectedHeader({ alg: opts.alg ?? 'RS256' })
+    .setSubject(opts.sub ?? '42')
+    .setIssuedAt()
+    .setExpirationTime(opts.expiresIn ?? '15m');
+  if (opts.aud) jwt.setAudience(opts.aud);
+  if (opts.notBefore !== undefined) jwt.setNotBefore(opts.notBefore);
+  return jwt.sign(privateKey);
+}
 
 export interface Recorded {
   method?: string;
@@ -16,6 +42,7 @@ export interface Recorded {
 export async function startFakeAuth() {
   const requests: Recorded[] = [];
   let meCalls = 0;
+  const roles: Record<string, string> = {};
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -26,11 +53,12 @@ export async function startFakeAuth() {
         res.end(JSON.stringify(data));
       };
       if (req.url === '/api/auth/me') {
-        // Las validaciones del guard no llevan X-User-Id; las peticiones proxiadas si.
+        // Solo cuenta consultas del gateway (las proxiadas llevan X-User-Id).
         if (!req.headers['x-user-id']) meCalls++;
-        return req.headers.authorization === 'Bearer valid'
-          ? json(200, { success: true, data: { id: 42, email: 'a@b.com', role: 'user' } })
-          : json(401, { success: false, message: 'No autenticado.' });
+        const sub = JSON.parse(
+          Buffer.from(String(req.headers.authorization).split('.')[1] ?? 'e30', 'base64url').toString(),
+        ).sub as string;
+        return json(200, { success: true, data: { id: Number(sub), email: 'a@b.com', role: roles[sub] ?? 'user' } });
       }
       if (req.url === '/api/auth/login') return json(200, { success: true, echo: body });
       if (req.url === '/api/auth/logout') return json(200, { success: true });
@@ -45,6 +73,7 @@ export async function startFakeAuth() {
     url: `http://127.0.0.1:${port}`,
     requests,
     meCalls: () => meCalls,
+    roles,
     close: () => new Promise<void>((r) => server.close(() => r())),
   };
 }

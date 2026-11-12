@@ -1,3 +1,5 @@
+import { loadPublicKey } from '../gateway/jwt-key.js';
+
 /** Validacion del entorno al arrancar: falla rapido si algo esta mal. */
 export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {
   const errors: string[] = [];
@@ -11,8 +13,14 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   if (billing && !URL.canParse(billing)) {
     errors.push('BILLING_SERVICE_URL no es una URL valida');
   }
-  if (billing && !str('GATEWAY_SHARED_SECRET')) {
-    errors.push('GATEWAY_SHARED_SECRET es obligatoria si se registra billing');
+  if (!str('AUTH_JWT_PUBLIC_KEY') && !str('AUTH_JWT_PUBLIC_KEY_PATH')) {
+    errors.push('Falta AUTH_JWT_PUBLIC_KEY (o AUTH_JWT_PUBLIC_KEY_PATH): clave publica para validar los JWT');
+  } else {
+    try {
+      loadPublicKey(config as NodeJS.ProcessEnv);
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
   }
 
   for (const key of [
