@@ -1,8 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { setupApp } from './setup-app.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // El gateway solo hace proxy: el body debe llegar intacto al servicio destino.
+    bodyParser: false,
+  });
+
+  setupApp(app);
 
   const port = Number(process.env.PORT ?? 3000);
 

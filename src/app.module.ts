@@ -1,33 +1,35 @@
-import {
-  Module,
-  MiddlewareConsumer,
-  RequestMethod,
-} from '@nestjs/common';
-
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { validateEnv } from './config/env.validation.js';
+import { createBearerAuth } from './gateway/bearer-auth.middleware.js';
+import { createServiceProxy } from './gateway/proxy.factory.js';
+import { requestIdMiddleware } from './gateway/request-id.middleware.js';
+import { loadServices } from './gateway/services.config.js';
 import { HealthModule } from './health/health.module.js';
-import { AuthProxyMiddleware } from './proxy/auth-proxy.middleware.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnv,
     }),
     HealthModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(AuthProxyMiddleware)
-      .forRoutes({
-        path: 'auth/login',
-        method: RequestMethod.POST,
+    consumer.apply(requestIdMiddleware).forRoutes('*path');
+
+    const authService = loadServices().find((s) => s.prefix === 'auth');
+    for (const service of loadServices()) {
+      const bearer = createBearerAuth(service, {
+        validateUrl: `${authService?.target}${process.env.AUTH_VALIDATE_PATH ?? '/api/auth/me'}`,
+        cacheTtlMs: Number(process.env.TOKEN_CACHE_TTL_MS ?? 30000),
       });
+      consumer
+        .apply(bearer, createServiceProxy(service))
+        .forRoutes({ path: `${service.prefix}/*path`, method: RequestMethod.ALL });
+    }
   }
 }
