@@ -7,6 +7,14 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   if (!auth) errors.push('AUTH_SERVICE_URL es obligatoria');
   else if (!URL.canParse(auth)) errors.push('AUTH_SERVICE_URL no es una URL valida');
 
+  const facturacion = str('FACTURACION_SERVICE_URL');
+  if (facturacion && !URL.canParse(facturacion)) {
+    errors.push('FACTURACION_SERVICE_URL no es una URL valida');
+  }
+  if (facturacion && !str('GATEWAY_SHARED_SECRET')) {
+    errors.push('GATEWAY_SHARED_SECRET es obligatoria si se registra facturacion');
+  }
+
   for (const key of [
     'PORT',
     'TOKEN_CACHE_TTL_MS',

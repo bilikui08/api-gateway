@@ -43,11 +43,23 @@ export function loadServices(env: NodeJS.ProcessEnv = process.env): ServiceConfi
         { method: 'POST', path: 'refresh' },
       ],
     },
-    // Ejemplo de un servicio nuevo, con una zona solo para admin:
-    // { prefix: 'users', target: required(env, 'USERS_SERVICE_URL'),
-    //   upstreamPrefix: '/api/users', publicRoutes: [],
-    //   roleRules: [{ path: 'admin', roles: ['admin'] }] },
   ];
+
+  // Facturacion: se registra solo si esta configurada su URL.
+  // /facturacion/customers -> <FACTURACION_SERVICE_URL>/api/customers
+  if (env.FACTURACION_SERVICE_URL) {
+    services.push({
+      prefix: 'facturacion',
+      target: required(env, 'FACTURACION_SERVICE_URL'),
+      upstreamPrefix: '/api',
+      publicRoutes: [],
+    });
+  }
+
+  // Para otro servicio, con una zona solo para admin:
+  // { prefix: 'users', target: required(env, 'USERS_SERVICE_URL'),
+  //   upstreamPrefix: '/api/users', publicRoutes: [],
+  //   roleRules: [{ path: 'admin', roles: ['admin'] }] },
   return services;
 }
 

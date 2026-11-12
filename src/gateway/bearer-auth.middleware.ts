@@ -48,6 +48,7 @@ export function createBearerAuth(service: ServiceConfig, options: BearerAuthOpti
     delete req.headers['x-user-id'];
     delete req.headers['x-user-email'];
     delete req.headers['x-user-roles'];
+    delete req.headers['x-gateway-secret'];
 
     if (isPublic(req)) return next();
 
@@ -72,7 +73,13 @@ export function createBearerAuth(service: ServiceConfig, options: BearerAuthOpti
     if (!entry) {
       try {
         const upstream = await fetch(options.validateUrl, {
-          headers: { authorization, accept: 'application/json' },
+          headers: {
+            authorization,
+            accept: 'application/json',
+            ...(process.env.GATEWAY_SHARED_SECRET && {
+              'x-gateway-secret': process.env.GATEWAY_SHARED_SECRET,
+            }),
+          },
           signal: AbortSignal.timeout(5000),
         });
         if (upstream.status === 401 || upstream.status === 403) {

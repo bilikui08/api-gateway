@@ -35,6 +35,7 @@ export async function startFakeAuth() {
       if (req.url === '/api/auth/login') return json(200, { success: true, echo: body });
       if (req.url === '/api/auth/logout') return json(200, { success: true });
       if (req.url === '/') return json(200, {});
+      if (req.url === '/api/customers') return json(200, { success: true, data: [] });
       json(404, { success: false });
     });
   });
