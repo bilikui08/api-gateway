@@ -52,6 +52,26 @@ describe('Gateway (e2e)', () => {
     });
   });
 
+  describe('gestion de roles (solo admin)', () => {
+    it('un usuario sin rol admin recibe 403 en /auth/roles y /auth/users', async () => {
+      const user = await signToken(keys.privateKey, { sub: '100' });
+      auth.roles['100'] = ['user'];
+      await http().get('/auth/roles').set('Authorization', `Bearer ${user}`).expect(403);
+      await http().put('/auth/users/5/roles').set('Authorization', `Bearer ${user}`).send({ roles: [] }).expect(403);
+    });
+
+    it('un admin pasa (con cualquiera de sus roles) y se propagan los roles', async () => {
+      const admin = await signToken(keys.privateKey, { sub: '101' });
+      auth.roles['101'] = ['editor', 'admin'];
+      await http().get('/auth/roles').set('Authorization', `Bearer ${admin}`).expect(200);
+      expect(auth.requests.at(-1)!.headers['x-user-roles']).toBe('editor,admin');
+    });
+
+    it('sin token recibe 401', async () => {
+      await http().get('/auth/roles').expect(401);
+    });
+  });
+
   describe('billing', () => {
     it('reenvia /billing/customers a /api/customers con el Bearer intacto', async () => {
       await http().get('/billing/customers').set('Authorization', `Bearer ${valid}`).expect(200);

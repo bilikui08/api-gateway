@@ -15,7 +15,7 @@ Cliente ──► API Gateway :3000 ──► auth-api (Laravel, :8083)
 - **Proxy por servicio**: `/<prefijo>/...` → `<servicio>/<prefijo interno>/...` (p. ej. `/auth/login` → `/api/auth/login`).
 - **Autenticación**: valida el JWT (RS256) que emite auth (Passport) **localmente con su clave pública**: firma, expiración y `aud` opcional. No llama a auth en cada petición. El `sub` del token es el id de usuario.
 - **Los servicios validan el mismo JWT por su cuenta** con la misma clave pública: el gateway reenvía el `Authorization` intacto y no hay secreto compartido. Un cliente que llegue directo a un servicio sin un token válido no consigue nada.
-- **Autorización por rol**: reglas por ruta (403 si el rol no coincide). El token no lleva el rol, así que solo en las rutas con `roleRules` se consulta `GET /api/auth/me` (con caché).
+- **Autorización por rol**: reglas por ruta (403 si el rol no coincide). Un usuario tiene **varios roles** (N:N, gestionados en auth-api). El token no los lleva, así que solo en las rutas con `roleRules` se consulta `GET /api/auth/me` (con caché) y se comprueba que tenga **alguno** de los roles requeridos. Por defecto `/auth/roles/**` y `/auth/users/**` exigen `admin`.
 - **`X-User-Id`**: el gateway lo añade solo como dato informativo (logs). Descarta el que envíe el cliente; los servicios no deben fiarse de él.
 - **Seguridad**: helmet, CORS cerrado por defecto, rate limiting (más estricto en login/register/forgot-password), límite de body.
 - **Observabilidad**: `X-Request-Id` en cada petición y un log JSON por petición.
@@ -99,7 +99,7 @@ curl localhost:3000/auth/me -H "Authorization: Bearer $TOKEN"
 3. Si el servicio tiene un `/health` propio, el gateway ya lo incluye en `GET /health`.
 
 `roleRules` acepta `methods` opcional (`['DELETE']`) y varios roles (basta con uno).
-El rol sale de `data.role` (texto) o `data.roles` (lista) de la respuesta de `/me`.
+Los roles salen de `data.roles` (lista de nombres) de la respuesta de `/me`; el gateway los reenvía en `X-User-Roles`. Los roles se crean y asignan en auth-api (`/auth/roles`, `/auth/users/{id}/roles`).
 
 ## Despliegue en Hostinger (Business Web Hosting)
 

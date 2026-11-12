@@ -42,7 +42,7 @@ export interface Recorded {
 export async function startFakeAuth() {
   const requests: Recorded[] = [];
   let meCalls = 0;
-  const roles: Record<string, string> = {};
+  const roles: Record<string, string[]> = {};
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -58,8 +58,9 @@ export async function startFakeAuth() {
         const sub = JSON.parse(
           Buffer.from(String(req.headers.authorization).split('.')[1] ?? 'e30', 'base64url').toString(),
         ).sub as string;
-        return json(200, { success: true, data: { id: Number(sub), email: 'a@b.com', role: roles[sub] ?? 'user' } });
+        return json(200, { success: true, data: { id: Number(sub), email: 'a@b.com', roles: roles[sub] ?? ['user'] } });
       }
+      if (req.url === '/api/auth/roles') return json(200, { success: true, data: [] });
       if (req.url === '/api/auth/login') return json(200, { success: true, echo: body });
       if (req.url === '/api/auth/logout') return json(200, { success: true });
       if (req.url === '/') return json(200, {});

@@ -42,6 +42,11 @@ export function loadServices(env: NodeJS.ProcessEnv = process.env): ServiceConfi
         { method: 'POST', path: 'forgot-password' },
         { method: 'POST', path: 'refresh' },
       ],
+      // Gestion de roles/usuarios: solo admin (auth lo vuelve a comprobar por su cuenta).
+      roleRules: [
+        { path: 'roles', roles: ['admin'] },
+        { path: 'users', roles: ['admin'] },
+      ],
     },
   ];
 
