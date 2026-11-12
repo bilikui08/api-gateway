@@ -50,7 +50,7 @@ npm run start:dev           # usa AUTH_SERVICE_URL de .env
 | `AUTH_SERVICE_URL` | — (obligatoria) | URL base del servicio de auth |
 | `AUTH_VALIDATE_PATH` | `/api/auth/me` | Endpoint que valida el Bearer (GET, 200 = válido) |
 | `TOKEN_CACHE_TTL_MS` | `30000` | Caché de validaciones exitosas |
-| `FACTURACION_SERVICE_URL` | vacío | Si se define, se registra `/facturacion/*` |
+| `BILLING_SERVICE_URL` | vacío | Si se define, se registra `/billing/*` |
 | `GATEWAY_SHARED_SECRET` | vacío | Clave compartida con los servicios (obligatoria si hay facturación). Igual a `GATEWAY_SECRET` de facturin |
 | `PORT` | `3000` | Puerto del gateway |
 | `CORS_ORIGINS` | vacío (CORS cerrado) | Orígenes permitidos, separados por coma |
@@ -68,7 +68,7 @@ El gateway no arranca si la configuración es inválida (ver [src/config/env.val
 |---|---|---|
 | `POST /auth/login`, `/auth/register`, `/auth/forgot-password`, `/auth/refresh` | `/api/auth/...` | Público |
 | Cualquier otra `/auth/*` (p. ej. `GET /auth/me`, `POST /auth/logout`) | `/api/auth/...` | Bearer |
-| `/facturacion/*` (p. ej. `GET /facturacion/customers`) | `<FACTURACION_SERVICE_URL>/api/*` | Bearer |
+| `/billing/*` (p. ej. `GET /billing/customers`) | `<BILLING_SERVICE_URL>/api/*` | Bearer |
 | `GET /health`, `GET /health/live` | gateway | Público |
 
 Ejemplo:
@@ -105,7 +105,7 @@ El rol sale de `data.role` (texto) o `data.roles` (lista) de la respuesta de `/m
 Se despliega como **Node.js Web App** desde el repositorio de GitHub (hPanel → Websites → Add Website → Node.js web app):
 
 - Node.js 24 (o 22), build command `npm run build`, entry file `dist/main.js`.
-- Variables de entorno en el panel: `AUTH_SERVICE_URL`, `FACTURACION_SERVICE_URL`, `GATEWAY_SHARED_SECRET`, `CORS_ORIGINS`, `TRUST_PROXY`.
+- Variables de entorno en el panel: `AUTH_SERVICE_URL`, `BILLING_SERVICE_URL`, `GATEWAY_SHARED_SECRET`, `CORS_ORIGINS`, `TRUST_PROXY`.
 - Hostinger detiene la app tras un tiempo sin tráfico y la reinicia en la siguiente petición: la caché de tokens y el rate limit (en memoria) se pierden entonces.
 - Verifica en el primer despliegue que la app escucha en el puerto que asigna la plataforma (`PORT`).
 - En hosting compartido no hay red interna: los servicios deben exigir `X-Gateway-Secret` para que solo el gateway pueda llamarlos.

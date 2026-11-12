@@ -8,10 +8,10 @@ describe('Gateway (e2e)', () => {
 
   beforeAll(async () => {
     auth = await startFakeAuth();
-    // Un mismo servidor falso hace de auth y de facturacion.
+    // Un mismo servidor falso hace de auth y de billing.
     app = await createApp({
       AUTH_SERVICE_URL: auth.url,
-      FACTURACION_SERVICE_URL: auth.url,
+      BILLING_SERVICE_URL: auth.url,
       GATEWAY_SHARED_SECRET: 'secreto-de-prueba',
       RATE_LIMIT_MAX: '1000',
       RATE_LIMIT_AUTH_MAX: '1000',
@@ -47,22 +47,22 @@ describe('Gateway (e2e)', () => {
     });
   });
 
-  describe('facturacion y clave compartida', () => {
-    it('reenvia /facturacion/customers a /api/customers con identidad y clave', async () => {
-      await http().get('/facturacion/customers').set('Authorization', 'Bearer valid').expect(200);
+  describe('billing y clave compartida', () => {
+    it('reenvia /billing/customers a /api/customers con identidad y clave', async () => {
+      await http().get('/billing/customers').set('Authorization', 'Bearer valid').expect(200);
       const upstream = auth.requests.at(-1)!;
       expect(upstream.url).toBe('/api/customers');
       expect(upstream.headers['x-user-id']).toBe('42');
       expect(upstream.headers['x-gateway-secret']).toBe('secreto-de-prueba');
     });
 
-    it('facturacion exige Bearer', async () => {
-      await http().get('/facturacion/customers').expect(401);
+    it('billing exige Bearer', async () => {
+      await http().get('/billing/customers').expect(401);
     });
 
     it('el cliente no puede fijar X-Gateway-Secret propio hacia el servicio', async () => {
       await http()
-        .get('/facturacion/customers')
+        .get('/billing/customers')
         .set('Authorization', 'Bearer valid')
         .set('X-Gateway-Secret', 'falsa')
         .expect(200);
@@ -145,11 +145,11 @@ describe('Gateway (e2e)', () => {
       await http().get('/health/live').expect(200);
     });
 
-    it('/health reporta auth y facturacion como up', async () => {
+    it('/health reporta auth y billing como up', async () => {
       const res = await http().get('/health').expect(200);
       expect(res.body.services).toEqual([
         expect.objectContaining({ name: 'auth', status: 'up' }),
-        expect.objectContaining({ name: 'facturacion', status: 'up' }),
+        expect.objectContaining({ name: 'billing', status: 'up' }),
       ]);
     });
   });

@@ -19,14 +19,14 @@ describe('validateEnv', () => {
     ).toThrow(/PORT[\s\S]*RATE_LIMIT_MAX/);
   });
 
-  it('exige GATEWAY_SHARED_SECRET si se registra facturacion', () => {
+  it('exige GATEWAY_SHARED_SECRET si se registra billing', () => {
     expect(() =>
-      validateEnv({ AUTH_SERVICE_URL: 'http://a', FACTURACION_SERVICE_URL: 'http://f' }),
+      validateEnv({ AUTH_SERVICE_URL: 'http://a', BILLING_SERVICE_URL: 'http://f' }),
     ).toThrow(/GATEWAY_SHARED_SECRET/);
     expect(() =>
       validateEnv({
         AUTH_SERVICE_URL: 'http://a',
-        FACTURACION_SERVICE_URL: 'http://f',
+        BILLING_SERVICE_URL: 'http://f',
         GATEWAY_SHARED_SECRET: 'x',
       }),
     ).not.toThrow();

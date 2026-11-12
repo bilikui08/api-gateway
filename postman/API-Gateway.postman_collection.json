@@ -321,8 +321,8 @@
       ]
     },
     {
-      "name": "Facturacion (requiere Bearer)",
-      "description": "El gateway valida el token y reenvia a facturin: /facturacion/<ruta> -> /api/<ruta>.",
+      "name": "Billing (requiere Bearer)",
+      "description": "El gateway valida el token y reenvia a facturin: /billing/<ruta> -> /api/<ruta>.",
       "item": [
         {
           "name": "Listar clientes",
@@ -345,12 +345,12 @@
               ]
             },
             "url": {
-              "raw": "{{base_url}}/facturacion/customers",
+              "raw": "{{base_url}}/billing/customers",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "facturacion",
+                "billing",
                 "customers"
               ]
             }
@@ -377,12 +377,12 @@
               ]
             },
             "url": {
-              "raw": "{{base_url}}/facturacion/customers/1",
+              "raw": "{{base_url}}/billing/customers/1",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "facturacion",
+                "billing",
                 "customers",
                 "1"
               ]
@@ -390,7 +390,7 @@
           }
         },
         {
-          "name": "Perfil de facturacion",
+          "name": "Perfil de facturación",
           "request": {
             "method": "GET",
             "header": [
@@ -410,12 +410,12 @@
               ]
             },
             "url": {
-              "raw": "{{base_url}}/facturacion/user-billing-profile",
+              "raw": "{{base_url}}/billing/user-billing-profile",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "facturacion",
+                "billing",
                 "user-billing-profile"
               ]
             }
@@ -442,12 +442,12 @@
               ]
             },
             "url": {
-              "raw": "{{base_url}}/facturacion/sale-points",
+              "raw": "{{base_url}}/billing/sale-points",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "facturacion",
+                "billing",
                 "sale-points"
               ]
             }

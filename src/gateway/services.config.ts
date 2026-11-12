@@ -45,12 +45,12 @@ export function loadServices(env: NodeJS.ProcessEnv = process.env): ServiceConfi
     },
   ];
 
-  // Facturacion: se registra solo si esta configurada su URL.
-  // /facturacion/customers -> <FACTURACION_SERVICE_URL>/api/customers
-  if (env.FACTURACION_SERVICE_URL) {
+  // Billing: se registra solo si esta configurada su URL.
+  // /billing/customers -> <BILLING_SERVICE_URL>/api/customers
+  if (env.BILLING_SERVICE_URL) {
     services.push({
-      prefix: 'facturacion',
-      target: required(env, 'FACTURACION_SERVICE_URL'),
+      prefix: 'billing',
+      target: required(env, 'BILLING_SERVICE_URL'),
       upstreamPrefix: '/api',
       publicRoutes: [],
     });
